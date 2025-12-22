@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GameLogo } from '@/components/GameLogo';
 import { AnswerCard, answerColors } from '@/components/AnswerCard';
+import { OrderingQuestion } from '@/components/OrderingQuestion';
 import { useGameRealtime } from '@/hooks/useGameRealtime';
 import { supabase } from '@/integrations/supabase/client';
 import { submitPlayerAnswer, fetchQuizWithQuestions } from '@/lib/gameUtils';
@@ -18,6 +19,7 @@ interface QuestionData {
     id: string;
     answer_text: string;
     is_correct: boolean;
+    order_index: number;
   }[];
 }
 
@@ -94,6 +96,7 @@ const PlayGame: React.FC = () => {
               id: a.id,
               answer_text: a.answer_text,
               is_correct: a.is_correct,
+              order_index: a.order_index,
             })),
           })),
         });
@@ -162,6 +165,41 @@ const PlayGame: React.FC = () => {
       playerId,
       currentQuestion.id,
       answerId,
+      Math.round(timeSpent * 1000),
+      isCorrect,
+      pointsEarned
+    );
+  };
+
+  const handleOrderingSubmit = async (orderedIds: string[]) => {
+    if (answered || !currentQuestion) return;
+
+    setAnswered(true);
+
+    // Check if the order is correct by comparing with order_index
+    const correctOrder = [...currentQuestion.answers]
+      .sort((a, b) => a.order_index - b.order_index)
+      .map(a => a.id);
+    
+    const isCorrect = orderedIds.every((id, index) => id === correctOrder[index]);
+    setLastResult(isCorrect ? 'correct' : 'incorrect');
+
+    // Calculate points - partial credit based on correct positions
+    let correctPositions = 0;
+    orderedIds.forEach((id, index) => {
+      if (id === correctOrder[index]) correctPositions++;
+    });
+    
+    const correctRatio = correctPositions / orderedIds.length;
+    const timeBonus = Math.max(0, (currentQuestion.time_limit - timeSpent) / currentQuestion.time_limit);
+    const pointsEarned = Math.round(currentQuestion.points * correctRatio * (0.5 + 0.5 * timeBonus));
+    setLastPoints(pointsEarned);
+
+    // Submit to database (no single answer_id for ordering)
+    await submitPlayerAnswer(
+      playerId,
+      currentQuestion.id,
+      null,
       Math.round(timeSpent * 1000),
       isCorrect,
       pointsEarned
@@ -267,17 +305,27 @@ const PlayGame: React.FC = () => {
         </div>
       </header>
 
-      {/* Answer Grid - Full screen for quick tapping */}
-      <main className="flex-1 grid grid-cols-2 gap-3 p-3">
-        {currentQuestion.answers.map((answer, index) => (
-          <AnswerCard
-            key={answer.id}
-            color={answerColors[index]}
-            onClick={() => handleAnswerSelect(answer.id)}
-            selected={selectedAnswer === answer.id}
-            className="h-full min-h-[120px]"
+      {/* Answer Area */}
+      <main className="flex-1 p-3 overflow-auto">
+        {currentQuestion.question_type === 'ordering' ? (
+          <OrderingQuestion
+            answers={currentQuestion.answers}
+            onSubmit={handleOrderingSubmit}
+            disabled={answered}
           />
-        ))}
+        ) : (
+          <div className="grid grid-cols-2 gap-3 h-full">
+            {currentQuestion.answers.map((answer, index) => (
+              <AnswerCard
+                key={answer.id}
+                color={answerColors[index]}
+                onClick={() => handleAnswerSelect(answer.id)}
+                selected={selectedAnswer === answer.id}
+                className="h-full min-h-[120px]"
+              />
+            ))}
+          </div>
+        )}
       </main>
     </div>
   );

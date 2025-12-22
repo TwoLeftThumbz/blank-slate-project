@@ -19,6 +19,7 @@ interface QuestionData {
     id: string;
     answer_text: string;
     is_correct: boolean;
+    order_index: number;
   }[];
 }
 
@@ -61,6 +62,7 @@ const HostGame: React.FC = () => {
               id: a.id,
               answer_text: a.answer_text,
               is_correct: a.is_correct,
+              order_index: a.order_index,
             })),
           })),
         });
@@ -305,7 +307,36 @@ const HostGame: React.FC = () => {
         </div>
 
         {/* Answers */}
-        {showResults ? (
+        {currentQuestion.question_type === 'ordering' ? (
+          <div className="w-full max-w-2xl">
+            <p className="text-center text-muted-foreground mb-4">
+              {showResults ? 'Correct order:' : 'Players are arranging the order...'}
+            </p>
+            <div className="space-y-3">
+              {[...currentQuestion.answers]
+                .sort((a, b) => a.order_index - b.order_index)
+                .map((answer, index) => (
+                  <div
+                    key={answer.id}
+                    className={`flex items-center gap-3 p-4 rounded-xl ${answerColors[index % answerColors.length]}`}
+                  >
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-foreground/20 flex items-center justify-center font-bold">
+                      {index + 1}
+                    </span>
+                    <span className="flex-1 font-bold text-lg">{answer.answer_text}</span>
+                  </div>
+                ))}
+            </div>
+            {showResults && (
+              <div className="text-center mt-8">
+                <Button variant="game" size="xl" onClick={handleNextQuestion}>
+                  <SkipForward className="w-5 h-5 mr-2" />
+                  {game.current_question_index + 1 < (quiz?.questions.length || 0) ? 'Next Question' : 'Show Results'}
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : showResults ? (
           <div className="w-full max-w-4xl">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {currentQuestion.answers.map((answer, index) => (
