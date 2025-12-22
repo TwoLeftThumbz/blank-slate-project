@@ -22,17 +22,16 @@ interface QuizData {
   title: string;
   questions: {
     id: string;
-    type: string;
-    text: string;
-    media_url: string | null;
+    question_type: string;
+    question_text: string;
     time_limit: number;
     points: number;
-    position: number;
+    order_index: number;
     answers: {
       id: string;
-      text: string;
+      answer_text: string;
       is_correct: boolean;
-      order_position: number;
+      order_index: number;
     }[];
   }[];
 }
@@ -50,7 +49,7 @@ export const fetchQuizWithQuestions = async (quizId: string): Promise<QuizData |
     .from('questions')
     .select('*')
     .eq('quiz_id', quizId)
-    .order('position');
+    .order('order_index');
 
   if (questionsError || !questions) return null;
 
@@ -60,7 +59,7 @@ export const fetchQuizWithQuestions = async (quizId: string): Promise<QuizData |
         .from('answers')
         .select('*')
         .eq('question_id', q.id)
-        .order('order_position');
+        .order('order_index');
 
       return {
         ...q,
@@ -85,7 +84,7 @@ export const createGame = async (quizId: string, hostId: string): Promise<string
       game_code: gameCode,
       host_id: hostId,
       current_question_index: -1,
-      is_active: true,
+      status: 'waiting',
     })
     .select()
     .single();
@@ -103,7 +102,7 @@ export const findGameByCode = async (code: string) => {
     .from('games')
     .select('*')
     .eq('game_code', code.toUpperCase())
-    .eq('is_active', true)
+    .eq('status', 'waiting')
     .maybeSingle();
 
   if (error) {
@@ -114,13 +113,12 @@ export const findGameByCode = async (code: string) => {
   return data;
 };
 
-export const joinGame = async (gameId: string, nickname: string, sessionId: string) => {
+export const joinGame = async (gameId: string, nickname: string) => {
   const { data, error } = await supabase
     .from('players')
     .insert({
       game_id: gameId,
       nickname,
-      session_id: sessionId,
       score: 0,
       current_streak: 0,
     })
@@ -139,19 +137,17 @@ export const submitPlayerAnswer = async (
   playerId: string,
   questionId: string,
   answerId: string | null,
-  answerOrder: string[] | null,
-  timeSpent: number,
+  timeTakenMs: number,
   isCorrect: boolean,
   pointsEarned: number
 ) => {
   const { error } = await supabase
     .from('player_answers')
-    .upsert({
+    .insert({
       player_id: playerId,
       question_id: questionId,
       answer_id: answerId,
-      answer_order: answerOrder,
-      time_spent: timeSpent,
+      time_taken_ms: timeTakenMs,
       is_correct: isCorrect,
       points_earned: pointsEarned,
     });

@@ -5,17 +5,17 @@ import { AnswerCard, answerColors } from '@/components/AnswerCard';
 import { useGameRealtime } from '@/hooks/useGameRealtime';
 import { supabase } from '@/integrations/supabase/client';
 import { submitPlayerAnswer, fetchQuizWithQuestions } from '@/lib/gameUtils';
-import { Clock, Trophy, Check, X, Loader2 } from 'lucide-react';
+import { Trophy, Check, X, Loader2 } from 'lucide-react';
 
 interface QuestionData {
   id: string;
-  text: string;
-  type: string;
+  question_text: string;
+  question_type: string;
   time_limit: number;
   points: number;
   answers: {
     id: string;
-    text: string;
+    answer_text: string;
     is_correct: boolean;
   }[];
 }
@@ -84,13 +84,13 @@ const PlayGame: React.FC = () => {
           title: quizData.title,
           questions: quizData.questions.map(q => ({
             id: q.id,
-            text: q.text,
-            type: q.type,
+            question_text: q.question_text,
+            question_type: q.question_type,
             time_limit: q.time_limit,
             points: q.points,
             answers: q.answers.map(a => ({
               id: a.id,
-              text: a.text,
+              answer_text: a.answer_text,
               is_correct: a.is_correct,
             })),
           })),
@@ -138,7 +138,7 @@ const PlayGame: React.FC = () => {
 
   const currentQuestion = quiz?.questions[game.current_question_index];
   const isWaiting = game.current_question_index === -1;
-  const isGameOver = !game.is_active;
+  const isGameOver = game.status === 'finished';
 
   const handleAnswerSelect = async (answerId: string) => {
     if (answered || !currentQuestion) return;
@@ -160,8 +160,7 @@ const PlayGame: React.FC = () => {
       playerId,
       currentQuestion.id,
       answerId,
-      null,
-      timeSpent,
+      Math.round(timeSpent * 1000),
       isCorrect,
       pointsEarned
     );

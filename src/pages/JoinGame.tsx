@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GameLogo } from '@/components/GameLogo';
-import { findGameByCode, joinGame, getOrCreateSessionId } from '@/lib/gameUtils';
+import { findGameByCode, joinGame } from '@/lib/gameUtils';
 import { ArrowLeft, Gamepad2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -67,8 +67,8 @@ const JoinGame: React.FC = () => {
     if (!gameId) return;
 
     setLoading(true);
-    const sessionId = getOrCreateSessionId();
-    const player = await joinGame(gameId, nickname.trim(), sessionId);
+    const player = await joinGame(gameId, nickname.trim());
+    setLoading(false);
     setLoading(false);
 
     if (player) {

@@ -37,7 +37,7 @@ const AdminDashboard: React.FC = () => {
           created_at,
           questions (id)
         `)
-        .eq('created_by', user.id)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (!error && data) {
