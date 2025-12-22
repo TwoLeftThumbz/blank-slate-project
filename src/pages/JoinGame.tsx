@@ -3,19 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GameLogo } from '@/components/GameLogo';
-import { useQuiz } from '@/context/QuizContext';
+import { findGameByCode, joinGame, getOrCreateSessionId } from '@/lib/gameUtils';
 import { ArrowLeft, Gamepad2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const JoinGame: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { joinGame, setCurrentPlayer, gameState } = useQuiz();
   const [gameCode, setGameCode] = useState('');
   const [nickname, setNickname] = useState('');
   const [step, setStep] = useState<'code' | 'nickname'>('code');
+  const [gameId, setGameId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleCodeSubmit = (e: React.FormEvent) => {
+  const handleCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (gameCode.trim().length < 4) {
       toast({
@@ -26,8 +27,11 @@ const JoinGame: React.FC = () => {
       return;
     }
     
-    // Check if game exists
-    if (!gameState || gameState.gameCode !== gameCode.toUpperCase()) {
+    setLoading(true);
+    const game = await findGameByCode(gameCode);
+    setLoading(false);
+
+    if (!game) {
       toast({
         title: "Game not found",
         description: "No active game with this code. Check the code and try again.",
@@ -35,11 +39,21 @@ const JoinGame: React.FC = () => {
       });
       return;
     }
+
+    if (game.current_question_index !== -1) {
+      toast({
+        title: "Game already started",
+        description: "This game has already started. Wait for the next one!",
+        variant: "destructive",
+      });
+      return;
+    }
     
+    setGameId(game.id);
     setStep('nickname');
   };
 
-  const handleNicknameSubmit = (e: React.FormEvent) => {
+  const handleNicknameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (nickname.trim().length < 2) {
       toast({
@@ -50,18 +64,28 @@ const JoinGame: React.FC = () => {
       return;
     }
 
-    const player = joinGame(gameCode.toUpperCase(), nickname.trim());
+    if (!gameId) return;
+
+    setLoading(true);
+    const sessionId = getOrCreateSessionId();
+    const player = await joinGame(gameId, nickname.trim(), sessionId);
+    setLoading(false);
+
     if (player) {
-      setCurrentPlayer(player);
+      // Store player info in session storage for the play page
+      sessionStorage.setItem('player_id', player.id);
+      sessionStorage.setItem('player_nickname', player.nickname);
+      sessionStorage.setItem('game_id', gameId);
+      
       toast({
         title: "Welcome!",
         description: `You joined as ${player.nickname}`,
       });
-      navigate('/play');
+      navigate(`/play?gameId=${gameId}&playerId=${player.id}`);
     } else {
       toast({
         title: "Could not join",
-        description: "The game may have already started or ended.",
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
     }
@@ -98,8 +122,8 @@ const JoinGame: React.FC = () => {
                   maxLength={8}
                   autoFocus
                 />
-                <Button type="submit" variant="game" size="xl" className="w-full">
-                  Enter
+                <Button type="submit" variant="game" size="xl" className="w-full" disabled={loading}>
+                  {loading ? 'Checking...' : 'Enter'}
                 </Button>
               </div>
             </form>
@@ -123,8 +147,8 @@ const JoinGame: React.FC = () => {
                   maxLength={15}
                   autoFocus
                 />
-                <Button type="submit" variant="game" size="xl" className="w-full">
-                  Join Game!
+                <Button type="submit" variant="game" size="xl" className="w-full" disabled={loading}>
+                  {loading ? 'Joining...' : 'Join Game!'}
                 </Button>
               </div>
             </form>

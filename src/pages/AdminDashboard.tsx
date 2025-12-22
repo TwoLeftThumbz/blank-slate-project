@@ -1,26 +1,90 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { GameLogo } from '@/components/GameLogo';
-import { Input } from '@/components/ui/input';
-import { useQuiz } from '@/context/QuizContext';
-import { Quiz } from '@/types/quiz';
-import { Plus, Play, ArrowLeft } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { Plus, Play, ArrowLeft, Trash2, Loader2, LogOut } from 'lucide-react';
+
+interface Quiz {
+  id: string;
+  title: string;
+  created_at: string;
+  question_count: number;
+}
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { setCurrentQuiz } = useQuiz();
+  const { user, isAuthenticated, loading: authLoading, signOut } = useAuth();
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      navigate('/auth');
+    }
+  }, [authLoading, isAuthenticated, navigate]);
+
+  useEffect(() => {
+    const fetchQuizzes = async () => {
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('quizzes')
+        .select(`
+          id,
+          title,
+          created_at,
+          questions (id)
+        `)
+        .eq('created_by', user.id)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setQuizzes(data.map(q => ({
+          id: q.id,
+          title: q.title,
+          created_at: q.created_at,
+          question_count: q.questions?.length || 0,
+        })));
+      }
+      setLoading(false);
+    };
+
+    if (user) {
+      fetchQuizzes();
+    }
+  }, [user]);
 
   const handleCreateQuiz = () => {
-    const newQuiz: Quiz = {
-      id: Math.random().toString(36).substring(2, 11),
-      title: 'Untitled Quiz',
-      questions: [],
-      createdAt: new Date(),
-    };
-    setCurrentQuiz(newQuiz);
     navigate('/admin/create');
   };
+
+  const handleEditQuiz = (quizId: string) => {
+    navigate(`/admin/create?id=${quizId}`);
+  };
+
+  const handleDeleteQuiz = async (quizId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!confirm('Are you sure you want to delete this quiz?')) return;
+
+    await supabase.from('quizzes').delete().eq('id', quizId);
+    setQuizzes(quizzes.filter(q => q.id !== quizId));
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen game-gradient flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen game-gradient">
@@ -32,14 +96,18 @@ const AdminDashboard: React.FC = () => {
           </Button>
           <GameLogo size="sm" />
         </div>
+        <Button variant="outline" size="sm" onClick={handleSignOut}>
+          <LogOut className="w-4 h-4 mr-2" />
+          Sign Out
+        </Button>
       </header>
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="text-center mb-12 animate-slide-up">
-          <h1 className="text-4xl font-black mb-4">Admin Dashboard</h1>
+          <h1 className="text-4xl font-black mb-4">My Quizzes</h1>
           <p className="text-muted-foreground text-lg">
-            Create engaging quizzes for your students
+            Create and manage your quiz games
           </p>
         </div>
 
@@ -67,15 +135,40 @@ const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Recent Quizzes (placeholder) */}
-        <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
-          <h3 className="text-xl font-bold mb-4">Recent Quizzes</h3>
-          <div className="bg-muted/30 rounded-xl p-12 text-center">
-            <p className="text-muted-foreground">
-              Your created quizzes will appear here. Create your first quiz to get started!
-            </p>
+        {/* Existing Quizzes */}
+        {quizzes.length > 0 ? (
+          <div className="space-y-4 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <h3 className="text-xl font-bold mb-4">Your Quizzes</h3>
+            {quizzes.map((quiz) => (
+              <div
+                key={quiz.id}
+                onClick={() => handleEditQuiz(quiz.id)}
+                className="bg-card rounded-xl p-6 cursor-pointer transition-all hover:scale-[1.01] hover:shadow-lg flex items-center justify-between"
+              >
+                <div>
+                  <h4 className="text-lg font-bold">{quiz.title}</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {quiz.question_count} questions · Created {new Date(quiz.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="icon" onClick={(e) => handleDeleteQuiz(quiz.id, e)}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        ) : (
+          <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <h3 className="text-xl font-bold mb-4">Your Quizzes</h3>
+            <div className="bg-muted/30 rounded-xl p-12 text-center">
+              <p className="text-muted-foreground">
+                No quizzes yet. Create your first one to get started!
+              </p>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

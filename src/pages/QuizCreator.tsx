@@ -1,24 +1,189 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GameLogo } from '@/components/GameLogo';
 import { QuestionEditor } from '@/components/QuestionEditor';
-import { useQuiz } from '@/context/QuizContext';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { createGame, uploadQuizMedia } from '@/lib/gameUtils';
 import { Question, Answer } from '@/types/quiz';
-import { Plus, Play, ArrowLeft, Save } from 'lucide-react';
+import { Plus, Play, ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+interface DbQuestion {
+  id: string;
+  type: string;
+  text: string;
+  media_url: string | null;
+  time_limit: number;
+  points: number;
+  position: number;
+}
+
+interface DbAnswer {
+  id: string;
+  text: string;
+  is_correct: boolean | null;
+  order_position: number | null;
+}
 
 const QuizCreator: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { currentQuiz, setCurrentQuiz, addQuestion, updateQuestion, deleteQuestion, startGame } = useQuiz();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  
+  const [quizId, setQuizId] = useState<string | null>(searchParams.get('id'));
+  const [quizTitle, setQuizTitle] = useState('Untitled Quiz');
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number>(0);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  if (!currentQuiz) {
-    navigate('/admin');
-    return null;
-  }
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      navigate('/auth');
+    }
+  }, [authLoading, isAuthenticated, navigate]);
+
+  // Load existing quiz or create new one
+  useEffect(() => {
+    const initQuiz = async () => {
+      if (!user) return;
+
+      if (quizId) {
+        // Load existing quiz
+        const { data: quiz } = await supabase
+          .from('quizzes')
+          .select('*')
+          .eq('id', quizId)
+          .maybeSingle();
+
+        if (quiz) {
+          setQuizTitle(quiz.title);
+
+          // Load questions
+          const { data: dbQuestions } = await supabase
+            .from('questions')
+            .select('*')
+            .eq('quiz_id', quizId)
+            .order('position');
+
+          if (dbQuestions) {
+            const questionsWithAnswers: Question[] = await Promise.all(
+              dbQuestions.map(async (q: DbQuestion) => {
+                const { data: dbAnswers } = await supabase
+                  .from('answers')
+                  .select('*')
+                  .eq('question_id', q.id)
+                  .order('order_position');
+
+                return {
+                  id: q.id,
+                  type: q.type as 'multiple-choice' | 'ordering',
+                  text: q.text,
+                  mediaUrl: q.media_url || undefined,
+                  timeLimit: q.time_limit,
+                  points: q.points,
+                  answers: (dbAnswers || []).map((a: DbAnswer) => ({
+                    id: a.id,
+                    text: a.text,
+                    isCorrect: a.is_correct || false,
+                    order: a.order_position || 0,
+                  })),
+                };
+              })
+            );
+            setQuestions(questionsWithAnswers);
+          }
+        }
+      } else {
+        // Create new quiz
+        const { data: newQuiz, error } = await supabase
+          .from('quizzes')
+          .insert({
+            title: 'Untitled Quiz',
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (!error && newQuiz) {
+          setQuizId(newQuiz.id);
+          // Update URL without navigation
+          window.history.replaceState(null, '', `/admin/create?id=${newQuiz.id}`);
+        }
+      }
+      setLoading(false);
+    };
+
+    if (!authLoading && user) {
+      initQuiz();
+    }
+  }, [quizId, user, authLoading]);
+
+  const saveQuiz = useCallback(async () => {
+    if (!quizId || !user) return;
+
+    setSaving(true);
+
+    // Update quiz title
+    await supabase
+      .from('quizzes')
+      .update({ title: quizTitle })
+      .eq('id', quizId);
+
+    // Delete existing questions and answers (will cascade)
+    await supabase
+      .from('questions')
+      .delete()
+      .eq('quiz_id', quizId);
+
+    // Insert all questions and answers
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      
+      const { data: newQuestion } = await supabase
+        .from('questions')
+        .insert({
+          quiz_id: quizId,
+          type: q.type,
+          text: q.text,
+          media_url: q.mediaUrl || null,
+          time_limit: q.timeLimit,
+          points: q.points,
+          position: i,
+        })
+        .select()
+        .single();
+
+      if (newQuestion) {
+        // Update question ID for local state
+        questions[i].id = newQuestion.id;
+
+        // Insert answers
+        for (let j = 0; j < q.answers.length; j++) {
+          const a = q.answers[j];
+          await supabase
+            .from('answers')
+            .insert({
+              question_id: newQuestion.id,
+              text: a.text,
+              is_correct: a.isCorrect || false,
+              order_position: a.order || j,
+            });
+        }
+      }
+    }
+
+    setSaving(false);
+    toast({
+      title: 'Saved!',
+      description: 'Your quiz has been saved.',
+    });
+  }, [quizId, quizTitle, questions, user, toast]);
 
   const createNewQuestion = (): Question => {
     const defaultAnswers: Answer[] = [
@@ -38,37 +203,37 @@ const QuizCreator: React.FC = () => {
 
   const handleAddQuestion = () => {
     const newQuestion = createNewQuestion();
-    addQuestion(newQuestion);
-    setSelectedQuestionIndex(currentQuiz.questions.length);
+    setQuestions([...questions, newQuestion]);
+    setSelectedQuestionIndex(questions.length);
   };
 
   const handleUpdateQuestion = (updates: Partial<Question>) => {
-    const question = currentQuiz.questions[selectedQuestionIndex];
-    if (question) {
-      updateQuestion(question.id, updates);
-    }
+    const newQuestions = [...questions];
+    newQuestions[selectedQuestionIndex] = {
+      ...newQuestions[selectedQuestionIndex],
+      ...updates,
+    };
+    setQuestions(newQuestions);
   };
 
   const handleDeleteQuestion = () => {
-    const question = currentQuiz.questions[selectedQuestionIndex];
-    if (question) {
-      deleteQuestion(question.id);
-      setSelectedQuestionIndex(Math.max(0, selectedQuestionIndex - 1));
-    }
+    const newQuestions = questions.filter((_, i) => i !== selectedQuestionIndex);
+    setQuestions(newQuestions);
+    setSelectedQuestionIndex(Math.max(0, selectedQuestionIndex - 1));
   };
 
-  const handleStartGame = () => {
-    if (currentQuiz.questions.length === 0) {
+  const handleStartGame = async () => {
+    if (questions.length === 0) {
       toast({
-        title: "No questions",
-        description: "Add at least one question before starting the game.",
-        variant: "destructive",
+        title: 'No questions',
+        description: 'Add at least one question before starting the game.',
+        variant: 'destructive',
       });
       return;
     }
 
     // Validate questions
-    const invalidQuestions = currentQuiz.questions.filter((q) => {
+    const invalidQuestions = questions.filter((q) => {
       const hasText = q.text.trim().length > 0;
       const hasAnswers = q.answers.filter((a) => a.text.trim().length > 0).length >= 2;
       const hasCorrect = q.type === 'multiple-choice' ? q.answers.some((a) => a.isCorrect) : true;
@@ -77,18 +242,40 @@ const QuizCreator: React.FC = () => {
 
     if (invalidQuestions.length > 0) {
       toast({
-        title: "Invalid questions",
-        description: "Make sure all questions have text, at least 2 answers, and a correct answer marked.",
-        variant: "destructive",
+        title: 'Invalid questions',
+        description: 'Make sure all questions have text, at least 2 answers, and a correct answer marked.',
+        variant: 'destructive',
       });
       return;
     }
 
-    const gameCode = startGame(currentQuiz);
-    navigate('/admin/host');
+    // Save first
+    await saveQuiz();
+
+    // Create game
+    if (!user || !quizId) return;
+    
+    const gameId = await createGame(quizId, user.id);
+    if (gameId) {
+      navigate(`/admin/host?gameId=${gameId}`);
+    } else {
+      toast({
+        title: 'Error',
+        description: 'Failed to start game. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const selectedQuestion = currentQuiz.questions[selectedQuestionIndex];
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen game-gradient flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
+  const selectedQuestion = questions[selectedQuestionIndex];
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -103,7 +290,7 @@ const QuizCreator: React.FC = () => {
 
         {/* Question Thumbnails */}
         <div className="flex-1 space-y-2 overflow-y-auto">
-          {currentQuiz.questions.map((question, index) => (
+          {questions.map((question, index) => (
             <button
               key={question.id}
               onClick={() => setSelectedQuestionIndex(index)}
@@ -135,14 +322,14 @@ const QuizCreator: React.FC = () => {
         {/* Header */}
         <header className="p-4 border-b border-border flex items-center justify-between">
           <Input
-            value={currentQuiz.title}
-            onChange={(e) => setCurrentQuiz({ ...currentQuiz, title: e.target.value })}
+            value={quizTitle}
+            onChange={(e) => setQuizTitle(e.target.value)}
             placeholder="Quiz Title"
             className="max-w-xs text-lg font-bold bg-transparent border-0 focus-visible:ring-0"
           />
           <div className="flex gap-2">
-            <Button variant="outline">
-              <Save className="w-4 h-4 mr-2" />
+            <Button variant="outline" onClick={saveQuiz} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
               Save
             </Button>
             <Button variant="game" onClick={handleStartGame}>
