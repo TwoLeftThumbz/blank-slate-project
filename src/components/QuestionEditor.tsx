@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { Question, Answer, QuestionType } from '@/types/quiz';
+import React, { useState, useRef } from 'react';
+import { Question, Answer } from '@/types/quiz';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AnswerCard, answerColors } from '@/components/AnswerCard';
-import { Check, GripVertical, Image, Trash2 } from 'lucide-react';
+import { Check, GripVertical, Image, Trash2, Upload, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface QuestionEditorProps {
   question: Question;
@@ -18,6 +20,9 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
   onDelete,
 }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const handleAnswerTextChange = (answerId: string, text: string) => {
     onUpdate({
@@ -79,6 +84,102 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
     });
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please upload an image or video file.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: 'File too large',
+        description: 'Maximum file size is 10MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${question.id}/${crypto.randomUUID()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('quiz-media')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('quiz-media')
+        .getPublicUrl(fileName);
+
+      onUpdate({ mediaUrl: publicUrl });
+
+      toast({
+        title: 'Upload successful',
+        description: 'Media added to your question.',
+      });
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: 'Upload failed',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveMedia = async () => {
+    if (!question.mediaUrl) return;
+
+    // Extract file path from URL
+    try {
+      const url = new URL(question.mediaUrl);
+      const pathParts = url.pathname.split('/quiz-media/');
+      if (pathParts.length > 1) {
+        const filePath = pathParts[1];
+        await supabase.storage.from('quiz-media').remove([filePath]);
+      }
+    } catch (error) {
+      console.error('Error removing file:', error);
+    }
+
+    onUpdate({ mediaUrl: undefined });
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      // Create a fake event to reuse handleFileSelect logic
+      const fakeEvent = {
+        target: { files: [file] },
+      } as unknown as React.ChangeEvent<HTMLInputElement>;
+      await handleFileSelect(fakeEvent);
+    }
+  };
+
+  const handleDragOverMedia = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   return (
     <div className="game-gradient rounded-2xl p-6 space-y-6 animate-scale-in">
       {/* Question Type Toggle */}
@@ -110,13 +211,60 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
       </div>
 
       {/* Media Upload Area */}
-      <div className="bg-muted/30 rounded-xl p-8 flex flex-col items-center justify-center min-h-[150px] border-2 border-dashed border-muted">
-        <Image className="w-12 h-12 text-muted-foreground mb-2" />
-        <p className="text-muted-foreground font-medium">Find and insert media</p>
-        <button className="text-primary underline font-semibold mt-1">
-          Upload file
-        </button>
-      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+      
+      {question.mediaUrl ? (
+        <div className="relative rounded-xl overflow-hidden bg-muted/30">
+          {question.mediaUrl.includes('video') ? (
+            <video
+              src={question.mediaUrl}
+              controls
+              className="w-full max-h-[300px] object-contain"
+            />
+          ) : (
+            <img
+              src={question.mediaUrl}
+              alt="Question media"
+              className="w-full max-h-[300px] object-contain"
+            />
+          )}
+          <button
+            onClick={handleRemoveMedia}
+            className="absolute top-2 right-2 bg-destructive text-destructive-foreground rounded-full p-2 hover:bg-destructive/90 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div 
+          onClick={() => fileInputRef.current?.click()}
+          onDrop={handleDrop}
+          onDragOver={handleDragOverMedia}
+          className={cn(
+            "bg-muted/30 rounded-xl p-8 flex flex-col items-center justify-center min-h-[150px] border-2 border-dashed border-muted cursor-pointer hover:border-primary/50 hover:bg-muted/40 transition-colors",
+            uploading && "pointer-events-none opacity-50"
+          )}
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="w-12 h-12 text-primary mb-2 animate-spin" />
+              <p className="text-muted-foreground font-medium">Uploading...</p>
+            </>
+          ) : (
+            <>
+              <Upload className="w-12 h-12 text-muted-foreground mb-2" />
+              <p className="text-muted-foreground font-medium">Click or drag to upload media</p>
+              <p className="text-xs text-muted-foreground mt-1">Images or videos up to 10MB</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Answers */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
