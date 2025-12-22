@@ -1,23 +1,108 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GameLogo } from '@/components/GameLogo';
 import { AnswerCard, answerColors } from '@/components/AnswerCard';
-import { useQuiz } from '@/context/QuizContext';
+import { useGameRealtime } from '@/hooks/useGameRealtime';
+import { supabase } from '@/integrations/supabase/client';
+import { submitPlayerAnswer, fetchQuizWithQuestions } from '@/lib/gameUtils';
 import { Clock, Trophy, Check, X, Loader2 } from 'lucide-react';
+
+interface QuestionData {
+  id: string;
+  text: string;
+  type: string;
+  time_limit: number;
+  points: number;
+  answers: {
+    id: string;
+    text: string;
+    is_correct: boolean;
+  }[];
+}
 
 const PlayGame: React.FC = () => {
   const navigate = useNavigate();
-  const { gameState, currentPlayer, submitAnswer } = useQuiz();
+  const [searchParams] = useSearchParams();
+  const gameId = searchParams.get('gameId');
+  const playerId = searchParams.get('playerId');
+  
+  const { game, players } = useGameRealtime(gameId);
+  const [quiz, setQuiz] = useState<{ title: string; questions: QuestionData[] } | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [timeSpent, setTimeSpent] = useState(0);
   const [answered, setAnswered] = useState(false);
   const [lastResult, setLastResult] = useState<'correct' | 'incorrect' | null>(null);
+  const [lastPoints, setLastPoints] = useState(0);
+  const [currentPlayer, setCurrentPlayer] = useState<{ nickname: string; score: number; current_streak: number } | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // Get player info
   useEffect(() => {
-    if (!gameState || !currentPlayer) {
-      navigate('/join');
+    const fetchPlayer = async () => {
+      if (!playerId) return;
+      
+      const { data } = await supabase
+        .from('players')
+        .select('*')
+        .eq('id', playerId)
+        .maybeSingle();
+
+      if (data) {
+        setCurrentPlayer({
+          nickname: data.nickname,
+          score: data.score,
+          current_streak: data.current_streak,
+        });
+      }
+    };
+
+    fetchPlayer();
+  }, [playerId]);
+
+  // Update player info from realtime
+  useEffect(() => {
+    if (playerId && players.length > 0) {
+      const player = players.find(p => p.id === playerId);
+      if (player) {
+        setCurrentPlayer({
+          nickname: player.nickname,
+          score: player.score,
+          current_streak: player.current_streak,
+        });
+      }
     }
-  }, [gameState, currentPlayer, navigate]);
+  }, [players, playerId]);
+
+  // Load quiz data
+  useEffect(() => {
+    const loadQuiz = async () => {
+      if (!game?.quiz_id) return;
+
+      const quizData = await fetchQuizWithQuestions(game.quiz_id);
+      if (quizData) {
+        setQuiz({
+          title: quizData.title,
+          questions: quizData.questions.map(q => ({
+            id: q.id,
+            text: q.text,
+            type: q.type,
+            time_limit: q.time_limit,
+            points: q.points,
+            answers: q.answers.map(a => ({
+              id: a.id,
+              text: a.text,
+              is_correct: a.is_correct,
+            })),
+          })),
+        });
+      }
+      setLoading(false);
+    };
+
+    if (game) {
+      loadQuiz();
+    }
+  }, [game?.quiz_id]);
 
   // Reset state when question changes
   useEffect(() => {
@@ -25,37 +110,61 @@ const PlayGame: React.FC = () => {
     setAnswered(false);
     setLastResult(null);
     setTimeSpent(0);
-  }, [gameState?.currentQuestionIndex]);
+    setLastPoints(0);
+  }, [game?.current_question_index]);
 
   // Track time spent
   useEffect(() => {
-    if (gameState && gameState.currentQuestionIndex >= 0 && !answered) {
+    if (game && game.current_question_index >= 0 && !answered) {
       const timer = setInterval(() => {
         setTimeSpent((prev) => prev + 0.1);
       }, 100);
       return () => clearInterval(timer);
     }
-  }, [gameState?.currentQuestionIndex, answered]);
+  }, [game?.current_question_index, answered]);
 
-  if (!gameState || !currentPlayer) {
+  if (!gameId || !playerId) {
+    navigate('/join');
     return null;
   }
 
-  const currentQuestion = gameState.quiz?.questions[gameState.currentQuestionIndex];
-  const isWaiting = gameState.currentQuestionIndex === -1;
-  const isGameOver = !gameState.isActive;
+  if (loading || !game || !currentPlayer) {
+    return (
+      <div className="min-h-screen game-gradient flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
 
-  const handleAnswerSelect = (answerId: string) => {
-    if (answered) return;
+  const currentQuestion = quiz?.questions[game.current_question_index];
+  const isWaiting = game.current_question_index === -1;
+  const isGameOver = !game.is_active;
+
+  const handleAnswerSelect = async (answerId: string) => {
+    if (answered || !currentQuestion) return;
 
     setSelectedAnswer(answerId);
     setAnswered(true);
 
-    const answer = currentQuestion?.answers.find((a) => a.id === answerId);
-    const isCorrect = answer?.isCorrect || false;
+    const answer = currentQuestion.answers.find((a) => a.id === answerId);
+    const isCorrect = answer?.is_correct || false;
     setLastResult(isCorrect ? 'correct' : 'incorrect');
 
-    submitAnswer(currentPlayer.id, answerId, timeSpent);
+    // Calculate points
+    const timeBonus = Math.max(0, (currentQuestion.time_limit - timeSpent) / currentQuestion.time_limit);
+    const pointsEarned = isCorrect ? Math.round(currentQuestion.points * (0.5 + 0.5 * timeBonus)) : 0;
+    setLastPoints(pointsEarned);
+
+    // Submit to database
+    await submitPlayerAnswer(
+      playerId,
+      currentQuestion.id,
+      answerId,
+      null,
+      timeSpent,
+      isCorrect,
+      pointsEarned
+    );
   };
 
   // Waiting for Game to Start
@@ -79,8 +188,8 @@ const PlayGame: React.FC = () => {
 
   // Game Over
   if (isGameOver) {
-    const sortedPlayers = [...gameState.players].sort((a, b) => b.score - a.score);
-    const playerRank = sortedPlayers.findIndex((p) => p.id === currentPlayer.id) + 1;
+    const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+    const playerRank = sortedPlayers.findIndex((p) => p.id === playerId) + 1;
 
     return (
       <div className="min-h-screen game-gradient flex flex-col items-center justify-center px-4">
@@ -122,12 +231,12 @@ const PlayGame: React.FC = () => {
           </h1>
           <p className="text-xl text-foreground/80">
             {lastResult === 'correct' 
-              ? `+${Math.round(currentQuestion.points * (0.5 + 0.5 * Math.max(0, (currentQuestion.timeLimit - timeSpent) / currentQuestion.timeLimit)))} points!`
+              ? `+${lastPoints} points!`
               : 'Better luck next time!'}
           </p>
-          {currentPlayer.currentStreak > 1 && (
+          {currentPlayer.current_streak > 1 && lastResult === 'correct' && (
             <p className="text-lg text-answer-yellow mt-4 font-bold">
-              🔥 {currentPlayer.currentStreak} answer streak!
+              🔥 {currentPlayer.current_streak + 1} answer streak!
             </p>
           )}
         </div>
@@ -135,7 +244,15 @@ const PlayGame: React.FC = () => {
     );
   }
 
-  // Active Question
+  // Active Question - Just show answer buttons
+  if (!currentQuestion) {
+    return (
+      <div className="min-h-screen game-gradient flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen game-gradient flex flex-col">
       {/* Header */}
@@ -149,9 +266,9 @@ const PlayGame: React.FC = () => {
         </div>
       </header>
 
-      {/* Answer Grid */}
+      {/* Answer Grid - Full screen for quick tapping */}
       <main className="flex-1 grid grid-cols-2 gap-3 p-3">
-        {currentQuestion?.answers.map((answer, index) => (
+        {currentQuestion.answers.map((answer, index) => (
           <AnswerCard
             key={answer.id}
             color={answerColors[index]}
