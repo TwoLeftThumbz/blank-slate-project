@@ -13,6 +13,7 @@ interface QuestionData {
   question_type: string;
   time_limit: number;
   points: number;
+  media_url: string | null;
   answers: {
     id: string;
     answer_text: string;
@@ -88,6 +89,7 @@ const PlayGame: React.FC = () => {
             question_type: q.question_type,
             time_limit: q.time_limit,
             points: q.points,
+            media_url: q.media_url,
             answers: q.answers.map(a => ({
               id: a.id,
               answer_text: a.answer_text,
