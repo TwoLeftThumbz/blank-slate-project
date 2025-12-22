@@ -14,7 +14,240 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      answers: {
+        Row: {
+          answer_text: string
+          created_at: string
+          id: string
+          is_correct: boolean
+          order_index: number
+          question_id: string
+        }
+        Insert: {
+          answer_text: string
+          created_at?: string
+          id?: string
+          is_correct?: boolean
+          order_index?: number
+          question_id: string
+        }
+        Update: {
+          answer_text?: string
+          created_at?: string
+          id?: string
+          is_correct?: boolean
+          order_index?: number
+          question_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games: {
+        Row: {
+          created_at: string
+          current_question_index: number
+          game_code: string
+          host_id: string | null
+          id: string
+          question_start_time: string | null
+          quiz_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_question_index?: number
+          game_code: string
+          host_id?: string | null
+          id?: string
+          question_start_time?: string | null
+          quiz_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_question_index?: number
+          game_code?: string
+          host_id?: string | null
+          id?: string
+          question_start_time?: string | null
+          quiz_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "quizzes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      player_answers: {
+        Row: {
+          answer_id: string | null
+          created_at: string
+          id: string
+          is_correct: boolean
+          player_id: string
+          points_earned: number
+          question_id: string
+          time_taken_ms: number | null
+        }
+        Insert: {
+          answer_id?: string | null
+          created_at?: string
+          id?: string
+          is_correct?: boolean
+          player_id: string
+          points_earned?: number
+          question_id: string
+          time_taken_ms?: number | null
+        }
+        Update: {
+          answer_id?: string | null
+          created_at?: string
+          id?: string
+          is_correct?: boolean
+          player_id?: string
+          points_earned?: number
+          question_id?: string
+          time_taken_ms?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_answers_answer_id_fkey"
+            columns: ["answer_id"]
+            isOneToOne: false
+            referencedRelation: "answers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_answers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      players: {
+        Row: {
+          created_at: string
+          current_streak: number
+          game_id: string
+          id: string
+          nickname: string
+          score: number
+        }
+        Insert: {
+          created_at?: string
+          current_streak?: number
+          game_id: string
+          id?: string
+          nickname: string
+          score?: number
+        }
+        Update: {
+          created_at?: string
+          current_streak?: number
+          game_id?: string
+          id?: string
+          nickname?: string
+          score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "players_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      questions: {
+        Row: {
+          created_at: string
+          id: string
+          order_index: number
+          points: number
+          question_text: string
+          question_type: string
+          quiz_id: string
+          time_limit: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          order_index?: number
+          points?: number
+          question_text: string
+          question_type?: string
+          quiz_id: string
+          time_limit?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          order_index?: number
+          points?: number
+          question_text?: string
+          question_type?: string
+          quiz_id?: string
+          time_limit?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questions_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "quizzes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quizzes: {
+        Row: {
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
