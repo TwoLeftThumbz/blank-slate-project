@@ -5,19 +5,18 @@ import { GameLogo } from '@/components/GameLogo';
 import { AnswerCard, answerColors } from '@/components/AnswerCard';
 import { useGameRealtime } from '@/hooks/useGameRealtime';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { fetchQuizWithQuestions } from '@/lib/gameUtils';
 import { Users, Play, SkipForward, Trophy, Clock, Loader2 } from 'lucide-react';
 
 interface QuestionData {
   id: string;
-  text: string;
-  type: string;
+  question_text: string;
+  question_type: string;
   time_limit: number;
   points: number;
   answers: {
     id: string;
-    text: string;
+    answer_text: string;
     is_correct: boolean;
   }[];
 }
@@ -28,7 +27,7 @@ const HostGame: React.FC = () => {
   const gameId = searchParams.get('gameId');
   const { isAuthenticated, loading: authLoading } = useAuth();
   
-  const { game, players, updateGame, fetchPlayers } = useGameRealtime(gameId);
+  const { game, players, updateGame } = useGameRealtime(gameId);
   const [quiz, setQuiz] = useState<{ title: string; questions: QuestionData[] } | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [showResults, setShowResults] = useState(false);
@@ -52,13 +51,13 @@ const HostGame: React.FC = () => {
           title: quizData.title,
           questions: quizData.questions.map(q => ({
             id: q.id,
-            text: q.text,
-            type: q.type,
+            question_text: q.question_text,
+            question_type: q.question_type,
             time_limit: q.time_limit,
             points: q.points,
             answers: q.answers.map(a => ({
               id: a.id,
-              text: a.text,
+              answer_text: a.answer_text,
               is_correct: a.is_correct,
             })),
           })),
@@ -109,14 +108,15 @@ const HostGame: React.FC = () => {
 
   const currentQuestion = quiz?.questions[game.current_question_index];
   const isWaitingForPlayers = game.current_question_index === -1;
-  const isGameOver = !game.is_active;
+  const isGameOver = game.status === 'finished';
 
   const handleStartQuiz = async () => {
     if (!quiz || quiz.questions.length === 0) return;
     
     await updateGame({
       current_question_index: 0,
-      started_at: new Date().toISOString(),
+      status: 'active',
+      question_start_time: new Date().toISOString(),
     });
   };
 
@@ -127,11 +127,13 @@ const HostGame: React.FC = () => {
     const nextIndex = game.current_question_index + 1;
     
     if (nextIndex < quiz.questions.length) {
-      await updateGame({ current_question_index: nextIndex });
+      await updateGame({ 
+        current_question_index: nextIndex,
+        question_start_time: new Date().toISOString(),
+      });
     } else {
       await updateGame({
-        is_active: false,
-        ended_at: new Date().toISOString(),
+        status: 'finished',
       });
     }
   };
@@ -278,7 +280,7 @@ const HostGame: React.FC = () => {
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
         {/* Question */}
         <div className="bg-foreground text-background rounded-2xl px-8 py-6 mb-8 max-w-3xl w-full text-center animate-scale-in">
-          <h2 className="text-2xl md:text-3xl font-bold">{currentQuestion.text}</h2>
+          <h2 className="text-2xl md:text-3xl font-bold">{currentQuestion.question_text}</h2>
         </div>
 
         {/* Answers */}
@@ -289,7 +291,7 @@ const HostGame: React.FC = () => {
                 <AnswerCard
                   key={answer.id}
                   color={answerColors[index]}
-                  text={answer.text}
+                  text={answer.answer_text}
                   size="lg"
                   showResult={answer.is_correct ? 'correct' : 'incorrect'}
                   disabled
@@ -309,7 +311,7 @@ const HostGame: React.FC = () => {
               <AnswerCard
                 key={answer.id}
                 color={answerColors[index]}
-                text={answer.text}
+                text={answer.answer_text}
                 size="lg"
                 disabled
               />

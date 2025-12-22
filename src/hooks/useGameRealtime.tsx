@@ -7,7 +7,7 @@ interface Player {
   nickname: string;
   score: number;
   current_streak: number;
-  session_id: string;
+  game_id: string;
 }
 
 interface Game {
@@ -16,9 +16,8 @@ interface Game {
   game_code: string;
   host_id: string | null;
   current_question_index: number;
-  is_active: boolean;
-  started_at: string | null;
-  ended_at: string | null;
+  status: string;
+  question_start_time: string | null;
 }
 
 export const useGameRealtime = (gameId: string | null) => {

@@ -139,10 +139,13 @@ export const QuestionEditor: React.FC<QuestionEditorProps> = ({
               answerColors[index] === 'yellow' && 'bg-answer-yellow',
               answerColors[index] === 'green' && 'bg-answer-green',
             )}>
-              {/* Drag Handle (for ordering) */}
+              {/* Order Number & Drag Handle (for ordering) */}
               {question.type === 'ordering' && (
-                <div className="flex items-center px-2 cursor-grab opacity-60 hover:opacity-100">
-                  <GripVertical className="w-5 h-5" />
+                <div className="flex items-center gap-1 px-2 cursor-grab bg-foreground/20">
+                  <GripVertical className="w-4 h-4 opacity-60" />
+                  <span className="w-6 h-6 rounded-full bg-foreground text-background font-bold text-sm flex items-center justify-center">
+                    {index + 1}
+                  </span>
                 </div>
               )}
 

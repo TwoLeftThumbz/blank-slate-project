@@ -1,32 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GameLogo } from '@/components/GameLogo';
 import { QuestionEditor } from '@/components/QuestionEditor';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { createGame, uploadQuizMedia } from '@/lib/gameUtils';
+import { createGame } from '@/lib/gameUtils';
 import { Question, Answer } from '@/types/quiz';
 import { Plus, Play, ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface DbQuestion {
-  id: string;
-  type: string;
-  text: string;
-  media_url: string | null;
-  time_limit: number;
-  points: number;
-  position: number;
-}
-
-interface DbAnswer {
-  id: string;
-  text: string;
-  is_correct: boolean | null;
-  order_position: number | null;
-}
 
 const QuizCreator: React.FC = () => {
   const navigate = useNavigate();
@@ -69,29 +51,29 @@ const QuizCreator: React.FC = () => {
             .from('questions')
             .select('*')
             .eq('quiz_id', quizId)
-            .order('position');
+            .order('order_index');
 
           if (dbQuestions) {
             const questionsWithAnswers: Question[] = await Promise.all(
-              dbQuestions.map(async (q: DbQuestion) => {
+              dbQuestions.map(async (q) => {
                 const { data: dbAnswers } = await supabase
                   .from('answers')
                   .select('*')
                   .eq('question_id', q.id)
-                  .order('order_position');
+                  .order('order_index');
 
                 return {
                   id: q.id,
-                  type: q.type as 'multiple-choice' | 'ordering',
-                  text: q.text,
-                  mediaUrl: q.media_url || undefined,
+                  type: q.question_type as 'multiple-choice' | 'ordering',
+                  text: q.question_text,
+                  mediaUrl: undefined,
                   timeLimit: q.time_limit,
                   points: q.points,
-                  answers: (dbAnswers || []).map((a: DbAnswer) => ({
+                  answers: (dbAnswers || []).map((a) => ({
                     id: a.id,
-                    text: a.text,
+                    text: a.answer_text,
                     isCorrect: a.is_correct || false,
-                    order: a.order_position || 0,
+                    order: a.order_index || 0,
                   })),
                 };
               })
@@ -105,7 +87,7 @@ const QuizCreator: React.FC = () => {
           .from('quizzes')
           .insert({
             title: 'Untitled Quiz',
-            created_by: user.id,
+            user_id: user.id,
           })
           .select()
           .single();
@@ -135,7 +117,7 @@ const QuizCreator: React.FC = () => {
       .update({ title: quizTitle })
       .eq('id', quizId);
 
-    // Delete existing questions and answers (will cascade)
+    // Delete existing questions (answers will cascade delete)
     await supabase
       .from('questions')
       .delete()
@@ -149,12 +131,11 @@ const QuizCreator: React.FC = () => {
         .from('questions')
         .insert({
           quiz_id: quizId,
-          type: q.type,
-          text: q.text,
-          media_url: q.mediaUrl || null,
+          question_type: q.type,
+          question_text: q.text,
           time_limit: q.timeLimit,
           points: q.points,
-          position: i,
+          order_index: i,
         })
         .select()
         .single();
@@ -170,9 +151,9 @@ const QuizCreator: React.FC = () => {
             .from('answers')
             .insert({
               question_id: newQuestion.id,
-              text: a.text,
+              answer_text: a.text,
               is_correct: a.isCorrect || false,
-              order_position: a.order || j,
+              order_index: a.order || j,
             });
         }
       }
