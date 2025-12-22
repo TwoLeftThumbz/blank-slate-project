@@ -27,6 +27,7 @@ interface QuizData {
     time_limit: number;
     points: number;
     order_index: number;
+    media_url: string | null;
     answers: {
       id: string;
       answer_text: string;

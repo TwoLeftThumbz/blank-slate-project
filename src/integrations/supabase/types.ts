@@ -187,6 +187,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          media_url: string | null
           order_index: number
           points: number
           question_text: string
@@ -197,6 +198,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          media_url?: string | null
           order_index?: number
           points?: number
           question_text: string
@@ -207,6 +209,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          media_url?: string | null
           order_index?: number
           points?: number
           question_text?: string

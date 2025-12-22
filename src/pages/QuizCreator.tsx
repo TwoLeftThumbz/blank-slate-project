@@ -66,7 +66,7 @@ const QuizCreator: React.FC = () => {
                   id: q.id,
                   type: q.question_type as 'multiple-choice' | 'ordering',
                   text: q.question_text,
-                  mediaUrl: undefined,
+                  mediaUrl: q.media_url || undefined,
                   timeLimit: q.time_limit,
                   points: q.points,
                   answers: (dbAnswers || []).map((a) => ({
@@ -136,6 +136,7 @@ const QuizCreator: React.FC = () => {
           time_limit: q.timeLimit,
           points: q.points,
           order_index: i,
+          media_url: q.mediaUrl || null,
         })
         .select()
         .single();

@@ -14,6 +14,7 @@ interface QuestionData {
   question_type: string;
   time_limit: number;
   points: number;
+  media_url: string | null;
   answers: {
     id: string;
     answer_text: string;
@@ -55,6 +56,7 @@ const HostGame: React.FC = () => {
             question_type: q.question_type,
             time_limit: q.time_limit,
             points: q.points,
+            media_url: q.media_url,
             answers: q.answers.map(a => ({
               id: a.id,
               answer_text: a.answer_text,
@@ -278,6 +280,25 @@ const HostGame: React.FC = () => {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+        {/* Media */}
+        {currentQuestion.media_url && (
+          <div className="mb-6 max-w-2xl w-full animate-scale-in">
+            {currentQuestion.media_url.includes('video') ? (
+              <video
+                src={currentQuestion.media_url}
+                controls
+                className="w-full max-h-[300px] object-contain rounded-xl"
+              />
+            ) : (
+              <img
+                src={currentQuestion.media_url}
+                alt="Question media"
+                className="w-full max-h-[300px] object-contain rounded-xl"
+              />
+            )}
+          </div>
+        )}
+
         {/* Question */}
         <div className="bg-foreground text-background rounded-2xl px-8 py-6 mb-8 max-w-3xl w-full text-center animate-scale-in">
           <h2 className="text-2xl md:text-3xl font-bold">{currentQuestion.question_text}</h2>
