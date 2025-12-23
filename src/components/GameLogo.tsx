@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { Link } from 'react-router-dom';
 
 interface GameLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -15,6 +16,8 @@ export const GameLogo: React.FC<GameLogoProps> = ({ size = 'md', className }) =>
   };
 
   return (
+    <Link to="/">
+      <button>
     <div className={cn('flex items-center gap-2', className)}>
       <h1 className={cn(
         'font-black tracking-tight text-shadow-game',
@@ -27,5 +30,7 @@ export const GameLogo: React.FC<GameLogoProps> = ({ size = 'md', className }) =>
         <span className="text-primary">Blast</span>
       </h1>
     </div>
+    </button>
+    </Link>
   );
 };
