@@ -6,6 +6,7 @@ import { AnswerCard, answerColors } from '@/components/AnswerCard';
 import { Leaderboard } from '@/components/Leaderboard';
 import { useGameRealtime } from '@/hooks/useGameRealtime';
 import { useAuth } from '@/hooks/useAuth';
+import { useGameAudio } from '@/hooks/useGameAudio';
 import { fetchQuizWithQuestions } from '@/lib/gameUtils';
 import { Users, Play, SkipForward, Trophy, Clock, Loader2 } from 'lucide-react';
 
@@ -31,6 +32,7 @@ const HostGame: React.FC = () => {
   const { isAuthenticated, loading: authLoading } = useAuth();
   
   const { game, players, updateGame } = useGameRealtime(gameId);
+  const { playLobbyMusic, stopLobbyMusic, playCountdownAudio, stopCountdownAudio, stopAllAudio } = useGameAudio();
   const [quiz, setQuiz] = useState<{ title: string; questions: QuestionData[] } | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [showResults, setShowResults] = useState(false);
@@ -77,6 +79,15 @@ const HostGame: React.FC = () => {
     }
   }, [game?.quiz_id]);
 
+  // Play lobby music when waiting for players
+  useEffect(() => {
+    if (game && game.current_question_index === -1) {
+      playLobbyMusic();
+    } else {
+      stopLobbyMusic();
+    }
+  }, [game?.current_question_index, playLobbyMusic, stopLobbyMusic]);
+
   // Timer countdown
   useEffect(() => {
     if (game && game.current_question_index >= 0 && timeLeft > 0 && !showResults) {
@@ -84,6 +95,7 @@ const HostGame: React.FC = () => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             setShowResults(true);
+            stopCountdownAudio();
             return 0;
           }
           return prev - 1;
@@ -91,9 +103,9 @@ const HostGame: React.FC = () => {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [game?.current_question_index, timeLeft, showResults]);
+  }, [game?.current_question_index, timeLeft, showResults, stopCountdownAudio]);
 
-  // Reset state when question changes
+  // Reset state and play countdown audio when question changes
   useEffect(() => {
     if (game && quiz && game.current_question_index >= 0) {
       const question = quiz.questions[game.current_question_index];
@@ -101,9 +113,17 @@ const HostGame: React.FC = () => {
         setTimeLeft(question.time_limit);
         setShowResults(false);
         setShowLeaderboard(false);
+        playCountdownAudio(question.time_limit);
       }
     }
-  }, [game?.current_question_index, quiz]);
+  }, [game?.current_question_index, quiz, playCountdownAudio]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      stopAllAudio();
+    };
+  }, [stopAllAudio]);
 
   if (authLoading || loading || !game) {
     return (
