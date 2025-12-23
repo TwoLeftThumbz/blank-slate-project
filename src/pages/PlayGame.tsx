@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GameLogo } from '@/components/GameLogo';
 import { AnswerCard, answerColors } from '@/components/AnswerCard';
 import { OrderingQuestion } from '@/components/OrderingQuestion';
+import { Leaderboard } from '@/components/Leaderboard';
 import { useGameRealtime } from '@/hooks/useGameRealtime';
 import { supabase } from '@/integrations/supabase/client';
 import { submitPlayerAnswer, fetchQuizWithQuestions } from '@/lib/gameUtils';
@@ -34,6 +35,7 @@ const PlayGame: React.FC = () => {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [timeSpent, setTimeSpent] = useState(0);
   const [answered, setAnswered] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [lastResult, setLastResult] = useState<'correct' | 'incorrect' | null>(null);
   const [lastPoints, setLastPoints] = useState(0);
   const [currentPlayer, setCurrentPlayer] = useState<{ nickname: string; score: number; current_streak: number } | null>(null);
@@ -113,10 +115,21 @@ const PlayGame: React.FC = () => {
   useEffect(() => {
     setSelectedAnswer(null);
     setAnswered(false);
+    setShowLeaderboard(false);
     setLastResult(null);
     setTimeSpent(0);
     setLastPoints(0);
   }, [game?.current_question_index]);
+
+  // Show leaderboard 3 seconds after answering
+  useEffect(() => {
+    if (answered && lastResult !== null && !showLeaderboard) {
+      const timer = setTimeout(() => {
+        setShowLeaderboard(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [answered, lastResult, showLeaderboard]);
 
   // Track time spent
   useEffect(() => {
@@ -247,7 +260,23 @@ const PlayGame: React.FC = () => {
     );
   }
 
-  // Answered - Waiting for Results
+  // Show leaderboard after answering
+  if (answered && showLeaderboard && currentQuestion) {
+    return (
+      <div className="min-h-screen game-gradient flex flex-col items-center justify-center px-4 py-8">
+        <Leaderboard 
+          players={players} 
+          currentPlayerId={playerId || undefined} 
+          showTopCount={5} 
+        />
+        <p className="text-muted-foreground mt-6 animate-pulse">
+          Waiting for next question...
+        </p>
+      </div>
+    );
+  }
+
+  // Answered - Show result briefly before leaderboard
   if (answered && currentQuestion) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4"

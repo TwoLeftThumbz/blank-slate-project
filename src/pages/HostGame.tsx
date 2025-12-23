@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { GameLogo } from '@/components/GameLogo';
 import { AnswerCard, answerColors } from '@/components/AnswerCard';
+import { Leaderboard } from '@/components/Leaderboard';
 import { useGameRealtime } from '@/hooks/useGameRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchQuizWithQuestions } from '@/lib/gameUtils';
@@ -33,6 +34,7 @@ const HostGame: React.FC = () => {
   const [quiz, setQuiz] = useState<{ title: string; questions: QuestionData[] } | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [showResults, setShowResults] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Redirect if not authenticated
@@ -98,6 +100,7 @@ const HostGame: React.FC = () => {
       if (question) {
         setTimeLeft(question.time_limit);
         setShowResults(false);
+        setShowLeaderboard(false);
       }
     }
   }, [game?.current_question_index, quiz]);
@@ -124,10 +127,15 @@ const HostGame: React.FC = () => {
     });
   };
 
+  const handleShowLeaderboard = () => {
+    setShowLeaderboard(true);
+  };
+
   const handleNextQuestion = async () => {
     if (!quiz) return;
     
     setShowResults(false);
+    setShowLeaderboard(false);
     const nextIndex = game.current_question_index + 1;
     
     if (nextIndex < quiz.questions.length) {
@@ -327,14 +335,24 @@ const HostGame: React.FC = () => {
                   </div>
                 ))}
             </div>
-            {showResults && (
+            {showResults && !showLeaderboard && (
               <div className="text-center mt-8">
-                <Button variant="game" size="xl" onClick={handleNextQuestion}>
-                  <SkipForward className="w-5 h-5 mr-2" />
-                  {game.current_question_index + 1 < (quiz?.questions.length || 0) ? 'Next Question' : 'Show Results'}
+                <Button variant="game" size="xl" onClick={handleShowLeaderboard}>
+                  <Trophy className="w-5 h-5 mr-2" />
+                  Show Leaderboard
                 </Button>
               </div>
             )}
+          </div>
+        ) : showLeaderboard ? (
+          <div className="w-full max-w-4xl">
+            <Leaderboard players={players} showTopCount={5} />
+            <div className="text-center mt-8">
+              <Button variant="game" size="xl" onClick={handleNextQuestion}>
+                <SkipForward className="w-5 h-5 mr-2" />
+                {game.current_question_index + 1 < (quiz?.questions.length || 0) ? 'Next Question' : 'Show Results'}
+              </Button>
+            </div>
           </div>
         ) : showResults ? (
           <div className="w-full max-w-4xl">
@@ -351,9 +369,9 @@ const HostGame: React.FC = () => {
               ))}
             </div>
             <div className="text-center mt-8">
-              <Button variant="game" size="xl" onClick={handleNextQuestion}>
-                <SkipForward className="w-5 h-5 mr-2" />
-                {game.current_question_index + 1 < (quiz?.questions.length || 0) ? 'Next Question' : 'Show Results'}
+              <Button variant="game" size="xl" onClick={handleShowLeaderboard}>
+                <Trophy className="w-5 h-5 mr-2" />
+                Show Leaderboard
               </Button>
             </div>
           </div>
